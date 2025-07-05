@@ -1,30 +1,56 @@
-// to make change visible everytime something changes in server
-// to automattically restart server
-// use NODEMON
-const express = require('express')
-const ServerConfig = require('./config/ServerConfig');
-const connectDB = require('./config/DbConfig');
-
+import express from "express";
+import 'dotenv/config'
+import http from "http";
+import { Server } from "socket.io";
+import { nanoid } from "nanoid";
+import { handleClientMessage, handleClose, handleOpen } from "./routes/socketHandlers.js";
+import { RoomManager } from "./roomManager.js"; // import RoomManager
+import handleUploadComplete from "./controllors/handleUpload.js";
 
 const app = express();
-
-// app.use () -> applies body parser in application
-
-
-// to parse/read the data from input successfully
-// we also need to parse
-
-
-// for json input
 app.use(express.json());
-// for text input
-app.use(express.text());
-// browser don't know all character,
-// to encode it 
-app.use(express.urlencoded({extended:true}));
 
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"],
+  },
+});
 
-app.listen(ServerConfig.PORT,async ()=>{
-    await connectDB();
-    console.log(`server started at port ${ServerConfig.PORT}...!!`);
-})
+export const roomManager = new RoomManager(io); // ✅ create instance
+
+const PORT = 8080;
+io.on("connection", (socket) => {
+  const { roomId, username } = socket.handshake.query;
+  console.log("user connected",username)
+  if (!roomId || !username) {
+    console.log("Missing roomId or username on connection");
+    socket.disconnect(true);
+    return;
+  }
+
+  const clientId = nanoid();
+  socket.data = { roomId, username, clientId };
+
+  handleOpen(socket, io, roomManager);
+
+  socket.on("message", (message) => {
+    console.log("message income",message);
+    handleClientMessage(socket, message, io, roomManager);
+  });
+
+  socket.on("disconnect", (reason) => {
+    handleClose(socket, io, roomManager);
+    console.log(`User ${clientId} disconnected (${reason})`);
+  });
+});
+
+app.get("/", (_, res) =>{
+  res.send("Socket.io server running")
+});
+app.post('/upload-complete',handleUploadComplete(io))
+
+server.listen(PORT, () => {
+  console.log(`Server listening at http://localhost:${PORT}`);
+});
