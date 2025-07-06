@@ -3,11 +3,16 @@ import 'dotenv/config'
 import http from "http";
 import { Server } from "socket.io";
 import { nanoid } from "nanoid";
+import cors from "cors";
 import { handleClientMessage, handleClose, handleOpen } from "./routes/socketHandlers.js";
 import { RoomManager } from "./roomManager.js"; // import RoomManager
 import handleUploadComplete from "./controllors/handleUpload.js";
 
 const app = express();
+app.use(cors({
+  origin : '*',
+  credentials : true
+}));
 app.use(express.json());
 
 const server = http.createServer(app);
@@ -20,7 +25,7 @@ const io = new Server(server, {
 
 export const roomManager = new RoomManager(io); // ✅ create instance
 
-const PORT = 8080;
+const PORT = process.env.PORT;
 io.on("connection", (socket) => {
   const { roomId, username } = socket.handshake.query;
   console.log("user connected",username)
@@ -52,5 +57,5 @@ app.get("/", (_, res) =>{
 app.post('/upload-complete',handleUploadComplete(io))
 
 server.listen(PORT, () => {
-  console.log(`Server listening at http://localhost:${PORT}`);
+  console.log(`Server listening..`);
 });

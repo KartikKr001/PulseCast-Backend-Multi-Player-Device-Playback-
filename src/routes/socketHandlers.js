@@ -24,13 +24,11 @@ export const handleClientMessage = async (socket, rawMessage, io, roomManager) =
   const { roomId, username, clientId } = socket.data;
   const t1 = epochNow();
   try {
-    console.log("inside hanling messages: ", rawMessage);
     const parsedData = typeof rawMessage === "string"
       ? JSON.parse(rawMessage)
       : rawMessage;
 
     if(parsedData.type === "NTP_REQUEST"){
-      console.log("request type confirmed")
       socket.emit("message", {
         type:"NTP_RESPONSE",
         t0: parsedData.t0,
