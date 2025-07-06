@@ -87,7 +87,7 @@ export class RoomManager {
   cleanupRoom = async (roomId) => {
     console.log(`🧹 Cleaning up room ${roomId}...`);
     try {
-      const result = await deleteFolder(roomId)
+      const result = await deleteFolder()
     } catch (err) {
       console.error(`❌ Cleanup failed for room ${roomId}:`, err);
     }

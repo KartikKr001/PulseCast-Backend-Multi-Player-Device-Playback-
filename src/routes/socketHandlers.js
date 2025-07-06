@@ -20,7 +20,7 @@ export function handleOpen(socket, io, roomManager) {
 }
 
 export const handleClientMessage = async (socket, rawMessage, io, roomManager) => {
-  console.log("indide message handler")
+  // console.log("indide message handler")
   const { roomId, username, clientId } = socket.data;
   const t1 = epochNow();
   try {
