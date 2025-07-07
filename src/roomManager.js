@@ -172,7 +172,7 @@ export class RoomManager {
 
       loopCount++;
     };
-    room.intervalId = setInterval(intervalFn, 50);
+    room.intervalId = setInterval(intervalFn, 100);
   };
   startSpiral = (roomId) => {
     const room = this.rooms.get(roomId);
@@ -235,7 +235,7 @@ export class RoomManager {
       }
     };
 
-    room.intervalId = setInterval(intervalFn, 50);
+    room.intervalId = setInterval(intervalFn, 100);
   };
 
   stopInterval = (roomId) => {
