@@ -134,7 +134,6 @@ export class RoomManager {
   startInterval = (roomId) => {
     const room = this.rooms.get(roomId);
     if (!room) return;
-
     let loopCount = 0;
 
     const intervalFn = () => {
@@ -161,7 +160,7 @@ export class RoomManager {
         ])
       );
 
-      this.io.to(roomId).emit("SPATIAL_CONFIG", {
+      this.io.to(roomId).emit("message", {
         type: "SCHEDULED_ACTION",
         serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
         scheduledAction: {
@@ -173,7 +172,70 @@ export class RoomManager {
 
       loopCount++;
     };
-    room.intervalId = setInterval(intervalFn, 100);
+    room.intervalId = setInterval(intervalFn, 50);
+  };
+  startSpiral = (roomId) => {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+
+    let loopCount = 0;
+    let expanding = true;
+
+    const maxRadius = 30;
+    const minRadius = 0;
+    const growthRate = 0.1;
+
+    const intervalFn = () => {
+      const clients = Array.from(room.clients.values());
+      if (clients.length === 0) return;
+
+      const radius = expanding
+        ? Math.min(growthRate * loopCount, maxRadius)
+        : Math.max(maxRadius - growthRate * loopCount, minRadius);
+
+      const angle = (loopCount * Math.PI) / 30;
+      const newX = GRID.ORIGIN_X + radius * Math.cos(angle);
+      const newY = GRID.ORIGIN_Y + radius * Math.sin(angle);
+
+      room.listeningSource = { x: newX, y: newY };
+
+      const gains = Object.fromEntries(
+        clients.map((client) => [
+          client.clientId,
+          {
+            gain: calculateGainFromDistanceToSource({
+              client: client.position,
+              source: room.listeningSource,
+            }),
+            rampTime: 0.25,
+          },
+        ])
+      );
+
+      this.io.to(roomId).emit("message", {
+        type: "SCHEDULED_ACTION",
+        serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
+        scheduledAction: {
+          type: "SPATIAL_CONFIG",
+          listeningSource: room.listeningSource,
+          gains,
+        },
+      });
+
+      loopCount++;
+
+      // Switch direction when bounds reached
+      const currentRadius = growthRate * loopCount;
+      if (expanding && currentRadius >= maxRadius) {
+        expanding = false;
+        loopCount = 0;
+      } else if (!expanding && currentRadius >= maxRadius) {
+        expanding = true;
+        loopCount = 0;
+      }
+    };
+
+    room.intervalId = setInterval(intervalFn, 50);
   };
 
   stopInterval = (roomId) => {
@@ -198,7 +260,7 @@ export class RoomManager {
       ])
     );
 
-    this.io.to(room.roomId).emit("SPATIAL_CONFIG", {
+    this.io.to(room.roomId).emit("message", {
       type: "SCHEDULED_ACTION",
       serverTimeToExecute: epochNow(),
       scheduledAction: {

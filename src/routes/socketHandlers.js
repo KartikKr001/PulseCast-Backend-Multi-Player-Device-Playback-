@@ -47,9 +47,21 @@ export const handleClientMessage = async (socket, rawMessage, io, roomManager) =
       else if(parsedData.type === "START_SPATIAL_AUDIO"){
         const room = roomManager.getRoomState(roomId);
         if (!room || room.intervalId) return;
-        roomManager.startInterval(roomId);
+        const temp = await roomManager.startInterval(roomId);
+        return;
       } 
+      else if(parsedData.type === "START_SPIRAL_SPATIAL_AUDIO"){
+        const room = roomManager.getRoomState(roomId);
+        // console.log(room);
+        if (!room || room.intervalId) return;
+        const temp = await roomManager.startSpiral(roomId);
+        // console.log("response sent",temp);
+        return;
+      }
       else if(parsedData.type === "STOP_SPATIAL_AUDIO"){
+        const room = roomManager.getRoomState(roomId);
+        if (!room || !room.intervalId) return;
+        roomManager.stopInterval(roomId);
         io.to(roomId).emit("message", {
           type: "SCHEDULED_ACTION",
           scheduledAction: {
@@ -58,9 +70,6 @@ export const handleClientMessage = async (socket, rawMessage, io, roomManager) =
           serverTimeToExecute: epochNow(),
         });
 
-        const room = roomManager.getRoomState(roomId);
-        if (!room || !room.intervalId) return;
-        roomManager.stopInterval(roomId);
       } 
       else if(parsedData.type === "REUPLOAD_AUDIO"){
         io.to(roomId).emit("message", {

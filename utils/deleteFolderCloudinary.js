@@ -9,6 +9,7 @@ cloudinary.config({
 export const deleteFolder = async (olderThanDays = 1) => {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - olderThanDays);
+  const cutoffDateStr = cutoffDate.toISOString().split('T')[0]; // 👈 Fix here
 
   let nextCursor = undefined;
 
@@ -17,7 +18,7 @@ export const deleteFolder = async (olderThanDays = 1) => {
 
     do {
       const result = await cloudinary.search
-        .expression(`created_at<=${cutoffDate.toISOString()}`)
+        .expression(`created_at<=${cutoffDateStr}`) // 👈 Use only date part
         .sort_by('created_at', 'desc')
         .max_results(100)
         .next_cursor(nextCursor)
