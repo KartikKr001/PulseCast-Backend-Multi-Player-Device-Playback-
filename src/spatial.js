@@ -59,7 +59,7 @@ export function gainFromDistanceLinear({
 export function gainFromDistanceQuadratic({
   client,
   source,
-  falloff = 0.0001,
+  falloff = 0.001,
   minGain = 0.35,
   maxGain = 1.0,
 }) {
