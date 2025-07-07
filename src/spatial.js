@@ -59,12 +59,32 @@ export function gainFromDistanceLinear({
 export function gainFromDistanceQuadratic({
   client,
   source,
-  falloff = 0.001,
+  falloff = 0.0001,
   minGain = 0.35,
   maxGain = 1.0,
 }) {
   const distance = calculateEuclideanDistance(client, source);
   const gain = maxGain - falloff * distance * distance;
+  return Math.max(minGain, gain);
+}
+
+/**
+ * Calculates gain using inverse falloff
+ */
+export function gainFromInverseSquare({
+  client,
+  source,
+  falloff = 0.001,      // Controls how fast gain decreases with distance
+  minGain = 0.2,         // Ensure sound never fully disappears
+  maxGain = 1.0          // Max loudness at the source
+}){
+  const dx = client.x - source.x;
+  const dy = client.y - source.y;
+  const distanceSq = dx * dx + dy * dy;
+
+  // Inverse square falloff model
+  const gain = maxGain / (1 + falloff * distanceSq);
+
   return Math.max(minGain, gain);
 }
 

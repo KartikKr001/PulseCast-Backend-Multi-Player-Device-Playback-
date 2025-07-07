@@ -46,12 +46,14 @@ export const handleClientMessage = async (socket, rawMessage, io, roomManager) =
       }
       else if(parsedData.type === "START_SPATIAL_AUDIO"){
         const room = roomManager.getRoomState(roomId);
+        roomManager.stopInterval(roomId);
         if (!room || room.intervalId) return;
         const temp = await roomManager.startInterval(roomId);
         return;
       } 
       else if(parsedData.type === "START_SPIRAL_SPATIAL_AUDIO"){
         const room = roomManager.getRoomState(roomId);
+        roomManager.stopInterval(roomId);
         // console.log(room);
         if (!room || room.intervalId) return;
         const temp = await roomManager.startSpiral(roomId);
@@ -70,7 +72,7 @@ export const handleClientMessage = async (socket, rawMessage, io, roomManager) =
           serverTimeToExecute: epochNow(),
         });
 
-      }   
+      } 
       else if(parsedData.type === "REUPLOAD_AUDIO"){
         io.to(roomId).emit("message", {
           type: "ROOM_EVENT",

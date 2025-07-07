@@ -2,7 +2,7 @@ import { GRID } from '../types/basic.js'
 import { SCHEDULE_TIME_MS } from '../utils/config.js';
 import { deleteFolder } from '../utils/deleteFolderCloudinary.js'
 import { epochNow } from './kartik.js';
-import {calculateGainFromDistanceToSource } from './spatial.js'
+import {calculateGainFromDistanceToSource, gainFromInverseSquare } from './spatial.js'
 import { positionClientsInCircle } from '../utils/spatial.js'
 
 
@@ -151,7 +151,7 @@ export class RoomManager {
         clients.map((client) => [
           client.clientId,
           {
-            gain: calculateGainFromDistanceToSource({
+            gain: gainFromInverseSquare({
               client: client.position,
               source: room.listeningSource,
             }),
@@ -172,28 +172,32 @@ export class RoomManager {
 
       loopCount++;
     };
-    room.intervalId = setInterval(intervalFn, 100);
+    room.intervalId = setInterval(intervalFn, 33);
   };
   startSpiral = (roomId) => {
     const room = this.rooms.get(roomId);
     if (!room) return;
 
-    let loopCount = 0;
-    let expanding = true;
+    const maxRadius = 35;
+    const minRadius = 0; // don't let it go all the way to center
+    const cycleDurationMs = 3000; // longer cycle = smoother pulsing
+    const angularSpeed = 2 * Math.PI / 8000; // 1 full circle every 8s
 
-    const maxRadius = 30;
-    const minRadius = 0;
-    const growthRate = 0.1;
+    const startTime = Date.now();
+    const phaseOffset = Math.random() * 2 * Math.PI;
 
     const intervalFn = () => {
       const clients = Array.from(room.clients.values());
       if (clients.length === 0) return;
 
-      const radius = expanding
-        ? Math.min(growthRate * loopCount, maxRadius)
-        : Math.max(maxRadius - growthRate * loopCount, minRadius);
+      const elapsed = Date.now() - startTime;
 
-      const angle = (loopCount * Math.PI) / 30;
+      // Cosine-based easing for natural in-out motion
+      const phase = ((2 * Math.PI * elapsed) / cycleDurationMs + phaseOffset) % (2 * Math.PI);
+      const radius = minRadius + (maxRadius - minRadius) * 0.5 * (1 - Math.cos(phase));
+
+      // Angle wraps every full circle
+      const angle = (angularSpeed * elapsed + phaseOffset) % (2 * Math.PI);
       const newX = GRID.ORIGIN_X + radius * Math.cos(angle);
       const newY = GRID.ORIGIN_Y + radius * Math.sin(angle);
 
@@ -203,7 +207,7 @@ export class RoomManager {
         clients.map((client) => [
           client.clientId,
           {
-            gain: calculateGainFromDistanceToSource({
+            gain: gainFromInverseSquare({
               client: client.position,
               source: room.listeningSource,
             }),
@@ -221,22 +225,11 @@ export class RoomManager {
           gains,
         },
       });
-
-      loopCount++;
-
-      // Switch direction when bounds reached
-      const currentRadius = growthRate * loopCount;
-      if (expanding && currentRadius >= maxRadius) {
-        expanding = false;
-        loopCount = 0;
-      } else if (!expanding && currentRadius >= maxRadius) {
-        expanding = true;
-        loopCount = 0;
-      }
     };
 
-    room.intervalId = setInterval(intervalFn, 100);
+    room.intervalId = setInterval(intervalFn, 50);
   };
+
 
   stopInterval = (roomId) => {
     const room = this.rooms.get(roomId);
