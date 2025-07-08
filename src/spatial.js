@@ -88,6 +88,31 @@ export function gainFromInverseSquare({
   return Math.max(minGain, gain);
 }
 
+
+export function getSpatialConfig({ clientPos, sourcePos, config,angle }) {
+  const dx = clientPos.x - sourcePos.x;
+  const dy = clientPos.y - sourcePos.y;
+  const distanceSq = dx * dx + dy * dy;
+  const distance = Math.sqrt(distanceSq);
+
+  // Inverse square gain
+  const gain = Math.max(
+    config.minGain,
+    config.maxGain / (1 + config.falloff * distanceSq)
+  );
+
+  // Stereo pan: from -1 (left) to 1 (right)
+  const relX = sourcePos.x - clientPos.x;
+  const pan = Math.max(-1, Math.min(1, relX / config.maxHearingDistance));
+
+  // Doppler effect (basic): pitch shift based on radial velocity
+  // For circular motion, approximate radial speed:
+  const radialSpeed = -(dx * Math.sin(angle) + dy * Math.cos(angle)) * config.speed; 
+  const pitch = 1 + radialSpeed * 0.005; // Adjust factor to taste
+
+  return { gain, pan, pitch };
+}
+
 /**
  * Exports quadratic falloff as default gain model
  */
