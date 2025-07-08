@@ -136,12 +136,13 @@ export class RoomManager {
     if (!room) return;
     let loopCount = 0;
 
+    let speed = 0.7
     const intervalFn = () => {
       const clients = Array.from(room.clients.values());
       if (clients.length === 0) return;
 
       const radius = 25;
-      const angle = (loopCount * Math.PI) / 30;
+      const angle = (loopCount *speed* Math.PI) / 30;
       const newX = GRID.ORIGIN_X + radius * Math.cos(angle);
       const newY = GRID.ORIGIN_Y + radius * Math.sin(angle);
 
