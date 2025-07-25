@@ -131,96 +131,70 @@ export class RoomManager {
     }
   };
 
-
   startInterval = (roomId) => {
-  const room = this.rooms.get(roomId);
-  if (!room) return;
+    const room = this.rooms.get(roomId);
+    if (!room) return;
 
-  let loopCount = 0;
-  let lastSourcePos = null;
-  let lastUpdateTime = null;
+    let loopCount = 0;
 
-  const config = {
-    speed: room.speed ?? 0.7,
-    radius: room.radius ?? 25,
-    origin: room.origin ?? { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
-    falloff: room.falloff ?? 0.01,
-    minGain: room.minGain ?? 0.2,
-    maxGain: room.maxGain ?? 1.0,
-    maxHearingDistance: room.maxHearingDistance ?? 100,
-    speedOfSound: 343, // m/s for Doppler
+    // Customizable per room or use defaults
+    const config = {
+      speed: room.speed ?? 0.7,
+      radius: room.radius ?? 25,
+      origin: room.origin ?? { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
+      falloff: room.falloff ?? 0.01,
+      minGain: room.minGain ?? 0.13,
+      maxGain: room.maxGain ?? 1.0,
+      maxHearingDistance: room.maxHearingDistance ?? 100, // used for stereo panning
+    };
+
+    const intervalFn = () => {
+      const clients = Array.from(room.clients.values());
+      if (clients.length === 0) return;
+
+      const angle = (loopCount * config.speed * Math.PI) / 30;
+      const newX = config.origin.x + config.radius * Math.cos(angle);
+      const newY = config.origin.y + config.radius * Math.sin(angle);
+      const newSource = { x: newX, y: newY };
+
+      room.listeningSource = newSource;
+
+      const gains = Object.fromEntries(
+        clients.map((client) => {
+          const spatial = getSpatialConfig({
+            clientPos: client.position,
+            sourcePos: newSource,
+            config,
+            angle : angle
+          });
+
+          return [
+            client.clientId,
+            {
+              gain: spatial.gain,
+              pan: spatial.pan,
+              pitch: spatial.pitch, // Optional
+              rampTime: 0.25,
+            },
+          ];
+        })
+      );
+
+      this.io.to(roomId).emit("message", {
+        type: "SCHEDULED_ACTION",
+        serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
+        scheduledAction: {
+          type: "SPATIAL_CONFIG",
+          listeningSource: newSource,
+          gains,
+        },
+      });
+
+      loopCount++;
+    };
+
+    room.intervalId = setInterval(intervalFn, 50);
   };
-
-  const intervalFn = () => {
-    const clients = Array.from(room.clients.values());
-    if (clients.length === 0) return;
-
-    const angle = (loopCount * config.speed * Math.PI) / 30;
-    const newX = config.origin.x + config.radius * Math.cos(angle);
-    const newY = config.origin.y + config.radius * Math.sin(angle);
-    const sourcePos = { x: newX, y: newY };
-
-    // Compute velocity
-    const currentTime = Date.now();
-    let velocity = { x: 0, y: 0 };
-    if (lastSourcePos && lastUpdateTime) {
-      const dt = (currentTime - lastUpdateTime) / 1000;
-      if (dt > 0) {
-        velocity = {
-          x: (sourcePos.x - lastSourcePos.x) / dt,
-          y: (sourcePos.y - lastSourcePos.y) / dt,
-        };
-      }
-    }
-    lastSourcePos = sourcePos;
-    lastUpdateTime = currentTime;
-
-    room.listeningSource = sourcePos;
-
-    const gains = Object.fromEntries(
-      clients.map((client) => {
-        const dx = client.position.x - sourcePos.x;
-        const dy = client.position.y - sourcePos.y;
-        const dist = Math.hypot(dx, dy);
-        const dir = dist === 0 ? { x: 0, y: 0 } : { x: dx / dist, y: dy / dist };
-        const vr = velocity.x * dir.x + velocity.y * dir.y;
-
-        const pitch = Math.max(0.5, Math.min(2.0, config.speedOfSound / (config.speedOfSound - vr)));
-
-        const spatial = getSpatialConfig({
-          clientPos: client.position,
-          sourcePos,
-          config,
-          angle,
-        });
-
-        return [
-          client.clientId,
-          {
-            gain: spatial.gain,
-            pan: spatial.pan,
-            pitch: pitch,
-            rampTime: 0.25,
-          },
-        ];
-      })
-    );
-
-    this.io.to(roomId).emit("message", {
-      type: "SCHEDULED_ACTION",
-      serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
-      scheduledAction: {
-        type: "SPATIAL_CONFIG",
-        listeningSource: sourcePos,
-        gains,
-      },
-    });
-
-    loopCount++;
-  };
-
-  room.intervalId = setInterval(intervalFn, 50);
-};
 
 startSpiral = (roomId) => {
   const room = this.rooms.get(roomId);
@@ -229,60 +203,35 @@ startSpiral = (roomId) => {
   const config = {
     minRadius: 0,
     maxRadius: 25,
-    angularSpeed: 2 * Math.PI / 8000,
+    angularSpeed: 2 * Math.PI / 8000, // 1 full rotation every 8s
     falloff: 0.01,
-    minGain: 0.2,
+    minGain: 0.13,
     maxGain: 1.0,
     maxHearingDistance: 50,
     origin: room.origin ?? { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
-    speedOfSound: 343,
+    speed: 0.01, // for Doppler effect
   };
 
   const startTime = Date.now();
   const phaseOffset = Math.random() * 2 * Math.PI;
 
-  let lastSourcePos = null;
-  let lastUpdateTime = null;
-
   const intervalFn = () => {
     const clients = Array.from(room.clients.values());
     if (clients.length === 0) return;
 
-    const currentTime = Date.now();
-    const elapsed = currentTime - startTime;
+    const elapsed = Date.now() - startTime;
     const t = (elapsed * config.angularSpeed + phaseOffset) % (2 * Math.PI);
 
+    // Figure-eight path: smooth sweeping motion in 2D
     const radius = config.maxRadius;
     const x = config.origin.x + radius * Math.sin(t);
     const y = config.origin.y + radius * Math.sin(t) * Math.cos(t);
     const sourcePos = { x, y };
 
-    // Velocity
-    let velocity = { x: 0, y: 0 };
-    if (lastSourcePos && lastUpdateTime) {
-      const dt = (currentTime - lastUpdateTime) / 1000;
-      if (dt > 0) {
-        velocity = {
-          x: (sourcePos.x - lastSourcePos.x) / dt,
-          y: (sourcePos.y - lastSourcePos.y) / dt,
-        };
-      }
-    }
-    lastSourcePos = sourcePos;
-    lastUpdateTime = currentTime;
-
     room.listeningSource = sourcePos;
 
     const gains = Object.fromEntries(
       clients.map((client) => {
-        const dx = client.position.x - sourcePos.x;
-        const dy = client.position.y - sourcePos.y;
-        const dist = Math.hypot(dx, dy);
-        const dir = dist === 0 ? { x: 0, y: 0 } : { x: dx / dist, y: dy / dist };
-        const vr = velocity.x * dir.x + velocity.y * dir.y;
-
-        const pitch = Math.max(0.5, Math.min(2.0, config.speedOfSound / (config.speedOfSound - vr)));
-
         const spatial = getSpatialConfig({
           clientPos: client.position,
           sourcePos,
@@ -295,7 +244,7 @@ startSpiral = (roomId) => {
           {
             gain: spatial.gain,
             pan: spatial.pan,
-            pitch: pitch,
+            pitch: spatial.pitch,
             rampTime: 0.25,
           },
         ];
@@ -315,6 +264,7 @@ startSpiral = (roomId) => {
 
   room.intervalId = setInterval(intervalFn, 50); // ~20 FPS
 };
+
 
 
   stopInterval = (roomId) => {
