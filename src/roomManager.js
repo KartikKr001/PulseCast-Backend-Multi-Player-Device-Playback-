@@ -5,6 +5,17 @@ import { epochNow } from './kartik.js';
 import {calculateGainFromDistanceToSource, gainFromInverseSquare, getSpatialConfig } from './spatial.js'
 import { positionClientsInCircle } from '../utils/spatial.js'
 
+const BASE_CONFIG = {
+  falloff: 0.005,
+  minGain: 0.05,
+  maxGain: 1.0,
+  maxHearingDistance: 100,
+  radius: 25,
+  speed: 0.5,
+  origin: { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
+};
+
+const TICK_MS = 33; // ~30 FPS
 
 export class RoomManager {
   rooms = new Map();  // Map of room id to Room object
@@ -131,85 +142,72 @@ export class RoomManager {
     }
   };
 
-  startInterval = (roomId) => {
-    const room = this.rooms.get(roomId);
-    if (!room) return;
 
-    let loopCount = 0;
+startInterval = (roomId) => {
+  const room = this.rooms.get(roomId);
+  if (!room) return;
 
-    // Customizable per room or use defaults
-    const config = {
-      speed: room.speed ?? 0.7,
-      radius: room.radius ?? 25,
-      origin: room.origin ?? { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
-      falloff: room.falloff ?? 0.01,
-      minGain: room.minGain ?? 0.13,
-      maxGain: room.maxGain ?? 1.0,
-      maxHearingDistance: room.maxHearingDistance ?? 100, // used for stereo panning
-    };
-
-    const intervalFn = () => {
-      const clients = Array.from(room.clients.values());
-      if (clients.length === 0) return;
-
-      const angle = (loopCount * config.speed * Math.PI) / 30;
-      const newX = config.origin.x + config.radius * Math.cos(angle);
-      const newY = config.origin.y + config.radius * Math.sin(angle);
-      const newSource = { x: newX, y: newY };
-
-      room.listeningSource = newSource;
-
-      const gains = Object.fromEntries(
-        clients.map((client) => {
-          const spatial = getSpatialConfig({
-            clientPos: client.position,
-            sourcePos: newSource,
-            config,
-            angle : angle
-          });
-
-          return [
-            client.clientId,
-            {
-              gain: spatial.gain,
-              pan: spatial.pan,
-              pitch: spatial.pitch, // Optional
-              rampTime: 0.25,
-            },
-          ];
-        })
-      );
-
-      this.io.to(roomId).emit("message", {
-        type: "SCHEDULED_ACTION",
-        serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
-        scheduledAction: {
-          type: "SPATIAL_CONFIG",
-          listeningSource: newSource,
-          gains,
-        },
-      });
-
-      loopCount++;
-    };
-
-    room.intervalId = setInterval(intervalFn, 50);
+  const config = {
+    ...BASE_CONFIG,
+    ...room, // overrides with per-room config if set
   };
+
+  const startTime = Date.now();
+
+  const intervalFn = () => {
+    const clients = Array.from(room.clients.values());
+    if (clients.length === 0) return;
+
+    const elapsed = Date.now() - startTime;
+    const angle = (elapsed * config.speed * Math.PI) / 1000; // speed controls rotation
+    const newX = config.origin.x + config.radius * Math.cos(angle);
+    const newY = config.origin.y + config.radius * Math.sin(angle);
+    const newSource = { x: newX, y: newY };
+
+    room.listeningSource = newSource;
+
+    const gains = Object.fromEntries(
+      clients.map((client) => {
+        const spatial = getSpatialConfig({
+          clientPos: client.position,
+          sourcePos: newSource,
+          config,
+          angle,
+        });
+
+        return [
+          client.clientId,
+          {
+            gain: spatial.gain,
+            pan: spatial.pan,
+            rampTime: 0.25,
+          },
+        ];
+      })
+    );
+
+    this.io.to(roomId).emit("message", {
+      type: "SCHEDULED_ACTION",
+      serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
+      scheduledAction: {
+        type: "SPATIAL_CONFIG",
+        listeningSource: newSource,
+        gains,
+      },
+    });
+  };
+
+  room.intervalId = setInterval(intervalFn, TICK_MS);
+};
 
 startSpiral = (roomId) => {
   const room = this.rooms.get(roomId);
   if (!room) return;
 
   const config = {
-    minRadius: 0,
-    maxRadius: 25,
-    angularSpeed: 2 * Math.PI / 8000, // 1 full rotation every 8s
-    falloff: 0.01,
-    minGain: 0.13,
-    maxGain: 1.0,
-    maxHearingDistance: 50,
-    origin: room.origin ?? { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
-    speed: 0.01, // for Doppler effect
+    ...BASE_CONFIG,
+    ...room,
+    angularSpeed: (2 * Math.PI) / 4000, // full rotation every 4s
   };
 
   const startTime = Date.now();
@@ -222,8 +220,8 @@ startSpiral = (roomId) => {
     const elapsed = Date.now() - startTime;
     const t = (elapsed * config.angularSpeed + phaseOffset) % (2 * Math.PI);
 
-    // Figure-eight path: smooth sweeping motion in 2D
-    const radius = config.maxRadius;
+    // Figure-eight path
+    const radius = config.radius;
     const x = config.origin.x + radius * Math.sin(t);
     const y = config.origin.y + radius * Math.sin(t) * Math.cos(t);
     const sourcePos = { x, y };
@@ -262,17 +260,39 @@ startSpiral = (roomId) => {
     });
   };
 
-  room.intervalId = setInterval(intervalFn, 50); // ~20 FPS
+  room.intervalId = setInterval(intervalFn, TICK_MS);
 };
 
+stopInterval = (roomId) => {
+  const room = this.rooms.get(roomId);
+  if (!room) return;
 
+  clearInterval(room.intervalId);
+  room.intervalId = undefined;
 
-  stopInterval = (roomId) => {
-    const room = this.rooms.get(roomId);
-    if (!room) return;
-    clearInterval(room.intervalId);
-    room.intervalId = undefined;
-  };
+  // Reset audio state for clients
+  const clients = Array.from(room.clients.values());
+  if (clients.length > 0) {
+    const neutralGains = Object.fromEntries(
+      clients.map((client) => [
+        client.clientId,
+        { gain: 0, pan: 0, rampTime: 0.25 },
+      ])
+    );
+
+    this.io.to(roomId).emit("message", {
+      type: "SCHEDULED_ACTION",
+      serverTimeToExecute: epochNow() + SCHEDULE_TIME_MS,
+      scheduledAction: {
+        type: "SPATIAL_CONFIG",
+        listeningSource: null,
+        gains: neutralGains,
+      },
+    });
+  }
+
+  room.listeningSource = null;
+};
 
   _broadcastSpatialConfig = (room) => {
     const clients = Array.from(room.clients.values());

@@ -59,8 +59,8 @@ export function gainFromDistanceLinear({
 export function gainFromDistanceQuadratic({
   client,
   source,
-  falloff = 0.0001,
-  minGain = 0.35,
+  falloff = 0.02,
+  minGain = 0.05,
   maxGain = 1.0,
 }) {
   const distance = calculateEuclideanDistance(client, source);
