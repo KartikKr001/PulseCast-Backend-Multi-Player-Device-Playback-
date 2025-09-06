@@ -95,27 +95,15 @@ export function getSpatialConfig({ clientPos, sourcePos, config,angle }) {
   const distanceSq = dx * dx + dy * dy;
   const distance = Math.sqrt(distanceSq);
 
-  // Inverse square gain
   const gain = Math.max(
-    config.minGain,
-    config.maxGain / (1 + config.falloff * distanceSq)
+    0.15,
+    1 - 0.0005*distanceSq
   );
+  const pitch = 1; // Adjust factor to taste
 
-  // Stereo pan: from -1 (left) to 1 (right)
-  const relX = sourcePos.x - clientPos.x;
-  const pan = Math.max(-1, Math.min(1, relX / config.maxHearingDistance));
-
-  // Doppler effect (basic): pitch shift based on radial velocity
-  // For circular motion, approximate radial speed:
-  const radialSpeed = -(dx * Math.sin(angle) + dy * Math.cos(angle)) * config.speed; 
-  const pitch = 1 + radialSpeed * 0.005; // Adjust factor to taste
-
-  return { gain, pan, pitch };
+  return { gain };
 }
 
-/**
- * Exports quadratic falloff as default gain model
- */
 export const calculateGainFromDistanceToSource = (params) => {
-  return gainFromDistanceQuadratic(params);
+  return getSpatialConfig(params);
 };

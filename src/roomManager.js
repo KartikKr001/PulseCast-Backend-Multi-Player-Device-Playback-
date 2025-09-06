@@ -6,12 +6,12 @@ import {calculateGainFromDistanceToSource, gainFromInverseSquare, getSpatialConf
 import { positionClientsInCircle } from '../utils/spatial.js'
 
 const BASE_CONFIG = {
-  falloff: 0.005,
+  falloff: 0.001,
   minGain: 0.05,
   maxGain: 1.0,
   maxHearingDistance: 100,
   radius: 25,
-  speed: 0.5,
+  speed: 0.1,
   origin: { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y },
 };
 
@@ -153,15 +153,14 @@ startInterval = (roomId) => {
   };
 
   const startTime = Date.now();
-
+  let loops = 0;
   const intervalFn = () => {
     const clients = Array.from(room.clients.values());
     if (clients.length === 0) return;
 
-    const elapsed = Date.now() - startTime;
-    const angle = (elapsed * config.speed * Math.PI) / 1000; // speed controls rotation
-    const newX = config.origin.x + config.radius * Math.cos(angle);
-    const newY = config.origin.y + config.radius * Math.sin(angle);
+    const angle = (loops * Math.PI) / 30;
+    const newX = config.origin.x + 25 * Math.cos(angle);
+    const newY = config.origin.y + 25 * Math.sin(angle);
     const newSource = { x: newX, y: newY };
 
     room.listeningSource = newSource;
@@ -179,8 +178,7 @@ startInterval = (roomId) => {
           client.clientId,
           {
             gain: spatial.gain,
-            pan: spatial.pan,
-            rampTime: 0.25,
+            rampTime: 0.5,
           },
         ];
       })
@@ -195,9 +193,10 @@ startInterval = (roomId) => {
         gains,
       },
     });
+    loops++;
   };
 
-  room.intervalId = setInterval(intervalFn, TICK_MS);
+  room.intervalId = setInterval(intervalFn, 50);
 };
 
 startSpiral = (roomId) => {
@@ -221,7 +220,7 @@ startSpiral = (roomId) => {
     const t = (elapsed * config.angularSpeed + phaseOffset) % (2 * Math.PI);
 
     // Figure-eight path
-    const radius = config.radius;
+    const radius = 25;
     const x = config.origin.x + radius * Math.sin(t);
     const y = config.origin.y + radius * Math.sin(t) * Math.cos(t);
     const sourcePos = { x, y };
